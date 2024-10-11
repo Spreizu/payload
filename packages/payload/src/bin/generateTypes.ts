@@ -3,6 +3,7 @@ import { compile } from 'json-schema-to-typescript'
 
 import type { SanitizedConfig } from '../config/types.js'
 
+import { addSelectGenericsToGeneratedTypes } from '../utilities/addSelectGenericsToGeneretedTypes.js'
 import { configToJSONSchema } from '../utilities/configToJSONSchema.js'
 import { getLogger } from '../utilities/logger.js'
 
@@ -36,51 +37,7 @@ export async function generateTypes(
     unreachableDefinitions: true,
   })
 
-  const modifiedLines = []
-
-  let isCollectionsSelectToken = false
-  let isSelectTypeToken = false
-
-  for (const line of compiled.split('\n')) {
-    let newLine = line
-    if (line === `  collectionsSelect?: {` || line === `  globalsSelect?: {`) {
-      isCollectionsSelectToken = true
-    }
-
-    if (isCollectionsSelectToken) {
-      if (line === '  };') {
-        isCollectionsSelectToken = false
-      } else {
-        // replace <posts: PostsSelect;> with <posts: PostsSelect<true> | PostsSelect<false;>
-        newLine = line.replace(/(['"]?\w+['"]?):\s*(\w+);/g, (_, variable, type) => {
-          return `${variable}: ${type}<false> | ${type}<true>;`
-        })
-      }
-    }
-
-    // eslint-disable-next-line regexp/no-unused-capturing-group
-    if (line.match(/via the `definition` "([\w-]+_select)"/g)) {
-      isSelectTypeToken = true
-    }
-
-    if (isSelectTypeToken) {
-      if (line.startsWith('export interface')) {
-        // add generic to the interface
-        newLine = line.replace(/(export interface\s+\w+)(\s*\{)/g, '$1<T extends boolean = true>$2')
-      } else {
-        // replace booleans with T on the line
-        newLine = line.replace(/(?<!\?)\bboolean\b/g, 'T')
-
-        if (line === '}') {
-          isSelectTypeToken = false
-        }
-      }
-    }
-
-    modifiedLines.push(newLine)
-  }
-
-  compiled = modifiedLines.join('\n')
+  compiled = addSelectGenericsToGeneratedTypes({ compiledGeneratedTypes: compiled })
 
   if (config.typescript.declare !== false) {
     if (config.typescript.declare?.ignoreTSError) {
